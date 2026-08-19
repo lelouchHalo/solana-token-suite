@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Solana Token Suite — Create &amp; Distribute</title>
+<meta name="description" content="Client-side Solana token creator and multi-sender. Mainnet. No backend." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="scanline-overlay" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="wordmark">
+      <span class="wordmark-glyph">◈</span>
+      <span class="wordmark-text">Token<b>Suite</b></span>
+      <span class="net-pill" id="netPill">MAINNET</span>
+    </div>
+    <div class="wallet-zone">
+      <label class="rpc-field" title="Your own RPC endpoint. Public mainnet-beta RPC rate-limits heavily.">
+        <span>RPC</span>
+        <input id="rpcInput" type="text" spellcheck="false" value="https://api.mainnet-beta.solana.com" />
+      </label>
+      <div class="wallet-controls">
+        <span id="walletBalance" class="wallet-balance hidden"></span>
+        <button id="connectBtn" class="btn btn-primary">Connect Wallet</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabbar" role="tablist" aria-label="Sections">
+  <button class="tab-btn active" id="tabBtnCreate" role="tab" aria-selected="true" aria-controls="panelCreate">
+    <span class="tab-index">01</span> Create Token
+  </button>
+  <button class="tab-btn" id="tabBtnSend" role="tab" aria-selected="false" aria-controls="panelSend">
+    <span class="tab-index">02</span> Multi Sender
+  </button>
+</nav>
+
+<main class="app-main">
+
+  <!-- ============ CREATE TOKEN ============ -->
+  <section id="panelCreate" class="panel active" role="tabpanel">
+    <div class="panel-grid">
+
+      <div class="form-column">
+        <div class="card">
+          <h2 class="card-title">Token Details</h2>
+
+          <div class="field-row">
+            <div class="field logo-field">
+              <label for="tokenLogo">Logo</label>
+              <label class="logo-drop" id="logoDrop" for="tokenLogo">
+                <img id="logoPreview" class="logo-preview hidden" alt="Token logo preview" />
+                <span id="logoDropText">Drop image<br/>or click</span>
+              </label>
+              <input type="file" id="tokenLogo" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" />
+            </div>
+
+            <div class="field-stack">
+              <div class="field">
+                <label for="tokenName">Token Name</label>
+                <input id="tokenName" type="text" maxlength="32" placeholder="e.g. Nebula Finance" />
+              </div>
+              <div class="field">
+                <label for="tokenSymbol">Ticker / Symbol</label>
+                <input id="tokenSymbol" type="text" maxlength="10" placeholder="e.g. NBLA" style="text-transform:uppercase" />
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="tokenDesc">Description</label>
+            <textarea id="tokenDesc" rows="3" maxlength="500" placeholder="What is this token for?"></textarea>
+          </div>
+
+          <div class="field-row three">
+            <div class="field">
+              <label for="tokenDecimals">Decimals</label>
+              <input id="tokenDecimals" type="number" min="0" max="9" value="9" />
+            </div>
+            <div class="field">
+              <label for="tokenSupply">Total Supply</label>
+              <input id="tokenSupply" type="text" inputmode="numeric" placeholder="e.g. 1000000000" />
+            </div>
+            <div class="field">
+              <label for="tokenSocials">Website / Social <span class="optional">(optional)</span></label>
+              <input id="tokenSocials" type="text" placeholder="https://…" />
+            </div>
+          </div>
+
+          <div class="authority-box">
+            <h3>Authority Revocation</h3>
+            <p class="hint">Revoking builds trust — buyers can verify supply and freeze can never change. This step is <b>irreversible</b>.</p>
+            <label class="check-row"><input type="checkbox" id="revokeMint" checked /> Revoke Mint Authority <span class="tag-note">no more tokens can ever be minted</span></label>
+            <label class="check-row"><input type="checkbox" id="revokeFreeze" checked /> Revoke Freeze Authority <span class="tag-note">your token can never freeze holder accounts</span></label>
+            <label class="check-row"><input type="checkbox" id="revokeUpdate" checked /> Revoke Update Authority <span class="tag-note">metadata becomes permanently immutable</span></label>
+          </div>
+
+          <button id="createTokenBtn" class="btn btn-accent btn-block" disabled>Connect Wallet to Continue</button>
+          <p class="fee-note">Costs SOL: Arweave upload (~0.01–0.03 SOL via Bundlr), mint + metadata rent (~0.03 SOL), network fees.</p>
+        </div>
+      </div>
+
+      <div class="feed-column">
+        <div class="card ledger-card">
+          <h2 class="card-title">Ledger</h2>
+          <ol class="step-rail" id="createSteps">
+            <li data-step="upload"><span class="step-num">01</span><span class="step-label">Upload logo + metadata to Arweave</span><span class="step-status">—</span></li>
+            <li data-step="mint"><span class="step-num">02</span><span class="step-label">Create mint account</span><span class="step-status">—</span></li>
+            <li data-step="metadata"><span class="step-num">03</span><span class="step-label">Attach Metaplex metadata</span><span class="step-status">—</span></li>
+            <li data-step="supply"><span class="step-num">04</span><span class="step-label">Mint total supply to your wallet</span><span class="step-status">—</span></li>
+            <li data-step="revoke-mint"><span class="step-num">05</span><span class="step-label">Revoke mint authority</span><span class="step-status">—</span></li>
+            <li data-step="revoke-freeze"><span class="step-num">06</span><span class="step-label">Revoke freeze authority</span><span class="step-status">—</span></li>
+            <li data-step="revoke-update"><span class="step-num">07</span><span class="step-label">Revoke update authority</span><span class="step-status">—</span></li>
+          </ol>
+          <div id="createResult" class="result-box hidden">
+            <div class="result-row"><span>Mint Address</span><code id="resultMint"></code></div>
+            <a id="resultSolscan" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-block">View on Solscan ↗</a>
+          </div>
+          <div class="terminal" id="createTerminal" aria-live="polite"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ MULTI SENDER ============ -->
+  <section id="panelSend" class="panel" role="tabpanel" hidden>
+    <div class="panel-grid">
+
+      <div class="form-column">
+        <div class="card">
+          <h2 class="card-title">Distribution Setup</h2>
+
+          <div class="field">
+            <label>Asset</label>
+            <div class="segmented" id="assetToggle">
+              <button class="seg-btn active" data-asset="SOL">SOL</button>
+              <button class="seg-btn" data-asset="SPL">SPL Token</button>
+            </div>
+          </div>
+
+          <div class="field hidden" id="mintField">
+            <label for="mintAddress">Token Mint Address</label>
+            <input id="mintAddress" type="text" placeholder="Paste SPL mint address" />
+          </div>
+
+          <div class="field-row" id="decimalsRow" hidden>
+            <div class="field">
+              <label for="mintDecimals">Decimals</label>
+              <div class="inline-input">
+                <input id="mintDecimals" type="number" min="0" max="9" value="0" />
+                <button id="autoDecimalsBtn" class="btn btn-ghost btn-sm">Auto-detect</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="recipientList">Recipient Addresses</label>
+            <textarea id="recipientList" rows="8" placeholder="One address per line, or comma-separated&#10;&#10;e.g.&#10;5G9k...abcd&#10;9Fq2...wxyz"></textarea>
+            <div class="hint-row"><span id="addrCount">0 addresses</span></div>
+          </div>
+
+          <div class="field">
+            <label for="amountPerWallet">Amount Per Wallet</label>
+            <input id="amountPerWallet" type="text" inputmode="decimal" placeholder="e.g. 100" />
+          </div>
+
+          <button id="estimateBtn" class="btn btn-outline btn-block" disabled>Check &amp; Estimate Fees</button>
+
+          <div id="estimateBox" class="estimate-box hidden">
+            <div class="estimate-grid">
+              <div><span class="e-label">Valid addresses</span><span class="e-val" id="eValid">—</span></div>
+              <div><span class="e-label">Invalid addresses</span><span class="e-val" id="eInvalid">—</span></div>
+              <div><span class="e-label">New token accounts</span><span class="e-val" id="eNewAta">—</span></div>
+              <div><span class="e-label">Estimated total cost</span><span class="e-val" id="eCost">—</span></div>
+            </div>
+            <div id="invalidList" class="invalid-list hidden"></div>
+          </div>
+
+          <button id="sendBtn" class="btn btn-accent btn-block" disabled>Send to All Recipients</button>
+        </div>
+      </div>
+
+      <div class="feed-column">
+        <div class="card ledger-card">
+          <h2 class="card-title">Distribution Progress</h2>
+          <div class="progress-wrap">
+            <div class="progress-bar"><div class="progress-fill" id="sendProgressFill"></div></div>
+            <span class="progress-label" id="sendProgressLabel">0 / 0 batches</span>
+          </div>
+          <div class="batch-list" id="batchList"></div>
+          <div class="terminal" id="sendTerminal" aria-live="polite"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p>Runs entirely client-side · Keys never leave your wallet extension · Mainnet transactions are irreversible — double-check every address and amount.</p>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
