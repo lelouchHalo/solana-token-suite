@@ -1,7 +1,50 @@
+// NOTE: wallet.js and ui.js are small and depend only on @solana/web3.js,
+// so they're safe to import eagerly — tabs, wallet-connect, etc. all work
+// even if the heavier tab-specific modules below fail to load.
 import { connectWallet, disconnectWallet, onWalletChange, state, getSolBalance, refreshConnection } from "./wallet.js";
-import { createToken } from "./createToken.js";
-import { parseAddresses, checkAndEstimate, autoDetectDecimals, sendToAll, BATCH_SIZE } from "./multiSender.js";
 import { log, setStep, shortAddr } from "./ui.js";
+
+// createToken.js and multiSender.js pull in third-party SDKs
+// (@metaplex-foundation/js, @solana/spl-token) that are heavier and more
+// prone to CDN/version issues. They're imported lazily, on first use, so a
+// failure in one tab's dependencies can never take down tab navigation or
+// the other tab.
+let _createTokenModule = null;
+let _multiSenderModule = null;
+
+function showGlobalError(message) {
+  const el = document.getElementById("globalError");
+  el.textContent = message;
+  el.classList.remove("hidden");
+}
+
+async function loadCreateTokenModule() {
+  if (_createTokenModule) return _createTokenModule;
+  try {
+    _createTokenModule = await import("./createToken.js");
+    return _createTokenModule;
+  } catch (err) {
+    console.error("Failed to load createToken.js module:", err);
+    showGlobalError(
+      `Couldn't load the token-creation module. This is usually a CDN/dependency issue, not a problem with your inputs.\nDetails: ${err.message || err}`
+    );
+    throw err;
+  }
+}
+
+async function loadMultiSenderModule() {
+  if (_multiSenderModule) return _multiSenderModule;
+  try {
+    _multiSenderModule = await import("./multiSender.js");
+    return _multiSenderModule;
+  } catch (err) {
+    console.error("Failed to load multiSender.js module:", err);
+    showGlobalError(
+      `Couldn't load the multi-sender module. This is usually a CDN/dependency issue, not a problem with your inputs.\nDetails: ${err.message || err}`
+    );
+    throw err;
+  }
+}
 
 /* ---------------------------------------------------------------- */
 /* Tabs                                                              */
@@ -149,6 +192,7 @@ createTokenBtn.addEventListener("click", async () => {
   createTokenBtn.textContent = "Launching…";
 
   try {
+    const { createToken } = await loadCreateTokenModule();
     const result = await createToken(
       {
         logoFile: selectedLogoFile,
@@ -204,8 +248,14 @@ assetToggle.addEventListener("click", (e) => {
   document.getElementById("sendBtn").disabled = true;
 });
 
+// Trivial, dependency-free — kept local so keystroke counting never waits
+// on (or breaks from) the heavier multiSender.js module.
+function parseAddressesLocal(raw) {
+  return raw.split(/[\n,]/).map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
 recipientList.addEventListener("input", () => {
-  const n = parseAddresses(recipientList.value).length;
+  const n = parseAddressesLocal(recipientList.value).length;
   addrCount.textContent = `${n} address${n === 1 ? "" : "es"}`;
 });
 
@@ -215,6 +265,7 @@ autoDecimalsBtn.addEventListener("click", async () => {
   autoDecimalsBtn.disabled = true;
   autoDecimalsBtn.textContent = "…";
   try {
+    const { autoDetectDecimals } = await loadMultiSenderModule();
     const d = await autoDetectDecimals(mint);
     mintDecimalsInput.value = d;
   } catch (err) {
@@ -234,13 +285,14 @@ const invalidList = document.getElementById("invalidList");
 const sendBtn = document.getElementById("sendBtn");
 
 estimateBtn.addEventListener("click", async () => {
-  const addresses = parseAddresses(recipientList.value);
+  const addresses = parseAddressesLocal(recipientList.value);
   if (addresses.length === 0) return alert("Paste at least one recipient address.");
   if (currentAsset === "SPL" && !mintAddressInput.value.trim()) return alert("Enter the SPL token mint address.");
 
   estimateBtn.disabled = true;
   estimateBtn.textContent = "Checking…";
   try {
+    const { checkAndEstimate } = await loadMultiSenderModule();
     const est = await checkAndEstimate({
       asset: currentAsset,
       mintAddress: mintAddressInput.value.trim(),
@@ -294,10 +346,11 @@ sendBtn.addEventListener("click", async () => {
   batchList.innerHTML = "";
   sendTerminal.innerHTML = "";
   progressFill.style.width = "0%";
-  const totalBatches = Math.ceil(lastEstimate.valid.length / BATCH_SIZE);
-  progressLabel.textContent = `0 / ${totalBatches} batches`;
 
   try {
+    const { sendToAll, BATCH_SIZE } = await loadMultiSenderModule();
+    const totalBatches = Math.ceil(lastEstimate.valid.length / BATCH_SIZE);
+    progressLabel.textContent = `0 / ${totalBatches} batches`;
     await sendToAll({
       asset: currentAsset,
       recipients: lastEstimate.valid,
